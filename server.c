@@ -9,7 +9,7 @@ int TCP_recv_file(int port)
 {
 	int socketfd, newsockfd, portno;
 	socklen_t client_len;
-	char buffer[256];
+	char buffer[1];
 	struct sockaddr_in serv_addr, cli_addr;
 	int n;
 	char fname[256];
@@ -41,36 +41,47 @@ int TCP_recv_file(int port)
 		error("ERROR on accepting\n");
 		return 1;
 	}
+	printf("connect successfully\n");
 	//read file name;
-	memset(fname,0,sizeof(fname));
-	n = read(socketfd,fname,strlen(fname));
+	memset(fname,0,256);
+	n = read(newsockfd,fname,256);
+	printf("%s\n",fname);
 	if(n < 0){
 		printf("ERROR in read file name\n");
 		return 1;
 	}
 	//read file size;
-	memset(fsize,0,sizeof(fsize));
-	n = read(socketfd,fsize,strlen(fsize));
+	memset(fsize,0,256);
+	n = read(newsockfd,fsize,256);
 	if(n < 0){
 		printf("ERROR in read file name\n");
 		return 1;
 	}
 	file_size = atoi(fsize);
-	FILE* fout = fopen(fname,"wr");
-	
-	do{
-		memset(buffer,0,256);
-		n = read(newsockfd,buffer,strlen(buffer));
+	printf("%d\n",file_size);
+	FILE* fout = fopen(fname,"wb");
+	if(fout == NULL){
+		printf("failed to open file\n");
+	}
+	memset(buffer,0,1);
+	sleep(1);
+	while(1)
+	{
+		n = read(newsockfd,buffer,sizeof(buffer));
 		if(n < 0){
 			error("ERROR on reading network stream\n");
 			break;
 		}
-		recv_size += 256;
-		fwrite(buffer,sizeof(char),sizeof(buffer),fout);	
-		
+		else if(n == 0){
+			break;
+		}
+		recv_size++;
+		fwrite(buffer,sizeof(char),n,fout);
+		memset(buffer,0,1);
+		sleep(0.5);
 		
 		//print the progress and time
-		if(recv_size >= (percent*file_size/20)){
+		if(recv_size >= (percent*file_size/20) && percent*5 <= 100){
 			
 			time_t t = time(NULL);
 			struct tm cur_time = *localtime(&t);
@@ -78,18 +89,18 @@ int TCP_recv_file(int port)
 								cur_time.tm_sec,cur_time.tm_year+1900,cur_time.tm_mon+1,cur_time.tm_mday);
 			percent++;					
 		}
-	}while(strcmp("pause",buffer) == 0);
-	memset(buffer,0,256);
-	n = read(newsockfd,buffer,strlen(buffer));
-	if(n < 0){
-		error("ERROR on reading network stream\n");
-		return 1;
+		else if(percent*5 > 100){
+			break;	
+		}
 	}
-	fwrite(buffer,sizeof(char),sizeof(buffer),fout);
-	memset(buffer,0,256);
+	fclose(fout);
 	close(newsockfd);
 	close(socketfd);
 	return 0;
+	
+}
+int TCP_send_file(int port, char* fname)
+{
 	
 }
 int main(int argc, char* argv[])

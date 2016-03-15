@@ -3,8 +3,19 @@
 #include<string.h>
 #include<errno.h>
 #include<unistd.h>
+#include<sys/types.h>
+#include<sys/socket.h>
+#include<sys/stat.h>
 #include<netdb.h>
 #include<time.h>
+int getFileSize(char* fname)
+{
+	struct stat buf;
+	int i = stat(fname,&buf);
+	if(i == -1)
+		return -1;
+	return buf.st_size;
+}
 int TCP_trans_file(char* ip, int port, char* fname)
 {
 	int socketfd, portno, n;
@@ -17,50 +28,39 @@ int TCP_trans_file(char* ip, int port, char* fname)
 	int trans_size = 0;//to record the transmiting prpgress
 	int percent = 1;
 	
-	char buffer[256];
+	char buffer[1];
 	char tmp[256];
 
 	printf("safe\n");
 	FILE* fin;
-	fin = fopen(fname,"r");
+	fin = fopen(fname,"rb");
 	
 	if(fin == NULL){
 		printf("ERROR in opening filfe\n");
 		return 1;
 	}
-	printf("safe\n");
 
-	while((temp = fgetc(fin))!=EOF){
-		file_size++;
-	}
-	printf("safe\n");
-	//reopen the file
-	fclose(fin);
-	fin = fopen(fname,"r");
-	printf("safe\n");	
+	file_size = getFileSize(fname);
+	printf("file size : %d\n",file_size);
 	
 	//check whether the file opening is successful
 	if(fin==NULL)
 		error("ERROR in opening the file\n");
 	
 	portno = port;
-	printf("safe5\n");
 	//use TCP protocol to connect to server
 	socketfd = socket(AF_INET,SOCK_STREAM, 0);
 	if(socketfd < 0){
 		error("ERROR in opening port\n");
 		return 1;
 	}
-	printf("safe6\n");
 	server = gethostbyname(ip);
 	
-	printf("safe8\n");
 	//check whether the host exists
 	if(server == NULL){
 		fprintf(stderr,"no %s such host",ip);
 		return 1;
 	}
-	printf("safe9\n");
 	//initial the server address with zero in bits
 	memset((char*)&serv_addr,0,sizeof(serv_addr));
 	serv_addr.sin_family = AF_INET;
@@ -68,64 +68,46 @@ int TCP_trans_file(char* ip, int port, char* fname)
 			(char*)&serv_addr.sin_addr.s_addr,
 				server->h_length);
 	serv_addr.sin_port = htons(portno);
-	printf("safe10\n");
 	//connect to server
 	if(connect(socketfd,(struct sockaddr *)&serv_addr,sizeof(serv_addr)) < 0){
 		printf("Error connecting\n");
 		return 1;
 	}
-	printf("safe in connect\n");
-	//initial the buffer
-	memset(buffer,0,256);
 	//transmit file name
 	n = write(socketfd,fname,strlen(fname));
 	if(n < 0){
 		printf("ERROR in writing to socket\n");
 		return 1;
 	}
-	printf("safe in transmit file name\n");
-	memset(buffer,0,256);
+	memset(buffer,0,1);
 	sleep(1);
 	//transmit file size;
-	char *t;
+	char t[32];
 	sprintf(t,"%d",file_size);
-	printf("%s\n",t);
 	n = write(socketfd,t,strlen(t));
-	printf("safe in transmit file size\n");
-	sleep(1);
-	bzero(buffer,256);
+	memset(buffer,0,1);
 	while(feof(fin) !=  EOF){
 		fread(buffer,sizeof(char),sizeof(buffer),fin);
-		printf("%s\n",buffer);
-		n = write(socketfd,buffer,strlen(buffer));
+		n = write(socketfd,buffer,sizeof(buffer));
 		if(n < 0){
 			printf("ERROR in writing to socket\n");
 			break;
 		}
-		trans_size += 255;
-		memset(buffer,0,256);
-		sleep(0.1);
+		trans_size++;
+		memset(buffer,0,1);
 		//print the progress and time
-		if(trans_size >= (percent*file_size/20)){	
+		if(trans_size >= (percent*file_size/20) && percent*5 <= 100 ){	
 			time_t t = time(NULL);
 			struct tm cur_time = *localtime(&t);
 			printf("%d%% file has transmitted at %d:%d:%d in %d-%d-%d\n ",percent*5,cur_time.tm_hour,cur_time.tm_min,
 											cur_time.tm_sec,cur_time.tm_year+1900,cur_time.tm_mon+1,cur_time.tm_mday);
 			percent++;
 		}
+		else if(percent*5 > 100){
+			break;
+		}
 	}
-	strcpy(tmp,"pause");
-	n =  write(socketfd,tmp,strlen(tmp));
-	sleep(0.01);
-	if(n < 0){
-		return 1;
-	}
-	n =  write(socketfd,buffer,strlen(buffer));	
-	sleep(0.01);
-	if(n < 0){
-		return 1;
-	}
-	memset(buffer,0,256);
+	fclose(fin);
 	close(socketfd);
 	return 0;	
 }
@@ -140,7 +122,7 @@ int tcp_recv_file(char* ip,int port)
 	int file_size = 0;
 	int recv_size = 0;//to record the recieving prpgress
 	int percent = 1;
-	char buffer[256];
+	char buffer[1];
 	
 	FILE* fout;
 	
@@ -197,17 +179,24 @@ int tcp_recv_file(char* ip,int port)
 	file_size = atoi(fsize);
 	
 	//recieve file
-	memset(buffer,0,256);
-	do{
-		n = read(socketfd,buffer,255);
+	memset(buffer,0,sizeof(buffer);
+	while(1)
+	{
+		n = read(socketfd,buffer,sizeof(buffer));
 		if(n < 0){
 			printf("ERROR on read from socket\n");
 			return 1;
 		}
+		if(n == 0)
+		{
+			break;
+		}
 		fwrite(buffer,sizeof(char),sizeof(buffer),fout);
-		recv_size += 255;
+		recv_size++;
+		memset(buffer,0,sizeof(buffer));
+		sleep(0.1);
 		//print the progress and time
-		if(recv_size >= (percent*file_size/20)){
+		if(recv_size >= (percent*file_size/20) && percent*5<100){
 			
 			time_t t = time(NULL);
 			struct tm cur_time = *localtime(&t);
@@ -215,9 +204,10 @@ int tcp_recv_file(char* ip,int port)
 											cur_time.tm_sec,cur_time.tm_year+1900,cur_time.tm_mon+1,cur_time.tm_mday);
 			percent++;
 		}
-		
-		
-	}while(strcmp(buffer,"pause"));
+		else if(percent*5 > 100){
+			break;
+		}
+	}
 	
 	
 	
