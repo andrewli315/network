@@ -168,6 +168,7 @@ int tcp_recv_file(char* ip,int port)
 		printf("ERROR on read from socket\n");
 		return 1;
 	}
+	printf("%s\n",fname);
 	//open file after get file name
 	fout = fopen(fname,"wr");
 	if(fout == NULL)
@@ -183,7 +184,7 @@ int tcp_recv_file(char* ip,int port)
 		return 1;
 	}
 	file_size = atoi(fsize);
-	
+	printf("%d\n",file_size);
 	//recieve file
 	memset(buffer,0,sizeof(buffer));
 	while(1)
@@ -196,8 +197,7 @@ int tcp_recv_file(char* ip,int port)
 		if(n == 0){
 			
 			break;
-		}
-		
+		}	
 		fwrite(buffer,sizeof(char),n,fout);
 		recv_size++;
 		memset(buffer,0,sizeof(buffer));
@@ -212,7 +212,7 @@ int tcp_recv_file(char* ip,int port)
 											cur_time.tm_sec,cur_time.tm_year+1900,cur_time.tm_mon+1,cur_time.tm_mday);
 			percent++;
 		}
-		else(percent*5 > 100){
+		else if(percent*5 > 100){
 			
 			break;
 		}		
@@ -244,6 +244,7 @@ int main(int argc, char* argv[])
 		else if(strcmp(argv[2],cmd[3]) == 0)
 		{
 			printf("recv file\n");
+			tcp_recv_file(argv[3],portno);
 		}
 		else
 		{

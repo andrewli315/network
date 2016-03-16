@@ -114,7 +114,7 @@ int TCP_send_file(int port, char* fname)
 	int n;
 	int file_size;
 	int percent = 1;
-	int recv_size = 0;
+	int trans_size = 0;
 	
 	FILE* fin = fopen(fname,"rb");
 	if(!fin)
@@ -160,8 +160,9 @@ int TCP_send_file(int port, char* fname)
 	//transmit file size;
 	char t[32];
 	memset(t,0,sizeof(t));
+	printf("%d  %s\n",file_size,t);
 	sprintf(t,"%d",file_size);
-	n = write(socketfd,t,strlen(t));
+	n = write(newsockfd,t,strlen(t));
 	if(n < 0){
 		error("ERROR on transmit file name\n");
 		return 1;
@@ -223,7 +224,11 @@ int main(int argc, char* argv[])
 			printf("preparing for the server...\n");
 			TCP_recv_file(portno);
 		}
-
+		else if(strcmp(argv[2],cmd[2]) == 0)
+		{
+			printf("preparing for the server...\n");
+			TCP_send_file(portno,argv[4]);
+		}
 	}
 	return 0;
 
