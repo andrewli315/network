@@ -31,7 +31,6 @@ int TCP_trans_file(char* ip, int port, char* fname)
 	char buffer[1];
 	char tmp[256];
 
-	printf("safe\n");
 	FILE* fin;
 	fin = fopen(fname,"rb");
 	
@@ -79,12 +78,18 @@ int TCP_trans_file(char* ip, int port, char* fname)
 		printf("ERROR in writing to socket\n");
 		return 1;
 	}
-	memset(buffer,0,1);
 	sleep(1);
 	//transmit file size;
 	char t[32];
+	memset(t,0,sizeof(t));
 	sprintf(t,"%d",file_size);
 	n = write(socketfd,t,strlen(t));
+	if(n < 0){
+		error("ERROR on sending file size\n");
+		return 1;
+	}
+	
+	//transmit file;
 	memset(buffer,0,1);
 	while(feof(fin) !=  EOF){
 		fread(buffer,sizeof(char),sizeof(buffer),fin);
@@ -163,6 +168,7 @@ int tcp_recv_file(char* ip,int port)
 		printf("ERROR on read from socket\n");
 		return 1;
 	}
+	//open file after get file name
 	fout = fopen(fname,"wr");
 	if(fout == NULL)
 	{
@@ -179,7 +185,7 @@ int tcp_recv_file(char* ip,int port)
 	file_size = atoi(fsize);
 	
 	//recieve file
-	memset(buffer,0,sizeof(buffer);
+	memset(buffer,0,sizeof(buffer));
 	while(1)
 	{
 		n = read(socketfd,buffer,sizeof(buffer));
@@ -187,33 +193,35 @@ int tcp_recv_file(char* ip,int port)
 			printf("ERROR on read from socket\n");
 			return 1;
 		}
-		if(n == 0)
-		{
+		if(n == 0){
+			
 			break;
 		}
-		fwrite(buffer,sizeof(char),sizeof(buffer),fout);
+		
+		fwrite(buffer,sizeof(char),n,fout);
 		recv_size++;
 		memset(buffer,0,sizeof(buffer));
-		sleep(0.1);
+		sleep(0.5);
 		//print the progress and time
-		if(recv_size >= (percent*file_size/20) && percent*5<100){
+		if(recv_size >= (percent*file_size/20) && percent*5 <= 100){
 			
+			fflush(fout);
 			time_t t = time(NULL);
 			struct tm cur_time = *localtime(&t);
 			printf("%d%% file has transmitted in %d:%d:%d in %d-%d-%d\n ",percent*5,cur_time.tm_hour,cur_time.tm_min,
 											cur_time.tm_sec,cur_time.tm_year+1900,cur_time.tm_mon+1,cur_time.tm_mday);
 			percent++;
 		}
-		else if(percent*5 > 100){
+		else(percent*5 > 100){
+			
 			break;
-		}
+		}		
 	}
-	
-	
-	
+	fflush(fout);
+	fclose(fout);
+	close(socketfd);
+	return 0;
 }
-
-
 int main(int argc, char* argv[])
 {
 	char *cmd[4] = {"tcp","udp","send","recv"};
@@ -225,7 +233,7 @@ int main(int argc, char* argv[])
 	}
 	
 	portno = atoi(argv[4]);
-	printf("%s\n%s\n%s\n%s\n",argv[1],argv[2],argv[3],argv[5]);
+	//printf("%s\n%s\n%s\n%s\n",argv[1],argv[2],argv[3],argv[5]);
 	if(strcmp(argv[1],cmd[0]) == 0)
 	{
 		if(strcmp(argv[2],cmd[2]) == 0)
