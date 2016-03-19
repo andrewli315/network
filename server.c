@@ -3,11 +3,20 @@
 #include<string.h>
 #include<errno.h>
 #include<unistd.h>
+#include<netinet/in.h>
 #include<netdb.h>
 #include<time.h>
 #include<sys/types.h>
 #include<sys/socket.h>
 #include<sys/stat.h>
+int getFileSize(char* fname)
+{
+	struct stat buf;
+	int i = stat(fname,&buf);
+	if(i == -1)
+		return -1;
+	return buf.st_size;
+}
 int TCP_recv_file(int port)
 {
 	int socketfd, newsockfd, portno;
@@ -198,13 +207,66 @@ int TCP_send_file(int port, char* fname)
 	return 0;
 	
 }
-int getFileSize(char* fname)
+int UDP_recv_file(int port)
 {
-	struct stat buf;
-	int i = stat(fname,&buf);
-	if(i == -1)
-		return -1;
-	return buf.st_size;
+	int socketfd,n;
+	int  portno,length;
+	struct sockaddr_in serv_addr,cli_addr;
+	int num = 0;
+	int file_size;
+	int percent = 1;
+	int recv_size;
+	char fname[256];
+	char fsize[256];
+	char buffer[256];
+	char temp[300];
+	char seq_num[4];
+	int i,s_num;
+
+	socketfd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (n < 0) {
+        error("ERROR on create an udp socket\n");
+        return 1;
+	}
+	memset((char*)&serv_addr,0,sizeof(serv_addr));
+	portno = port;
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_addr.s_addr = INADDR_ANY;
+	serv_addr.sin_port = htons(portno);
+	if(bind(socketfd,(struct sockaddr*)&serv_addr,sizeof(serv_addr)) < 0)
+	{
+		error("ERROR on binding\n");
+		return 1;
+	}
+	listen(socketfd,5);
+	length = sizeof(cli_addr);
+	while(1){
+		memset(buffer,0,256);
+		n = recvfrom(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&cli_addr,&length);
+		for(i=0;i<300;i++)
+		{
+			if(i<4)
+			{
+				seq_num[i] = temp[i];
+			}
+			else if(i >= 4)
+			{
+				buffer[i-4] = temp[i];
+				printf("%c   %c\n",buffer[i-4],temp[i]);
+			}
+		}
+		s_num = atoi(seq_num);
+		printf("%d  %s  %s\n",s_num,buffer,temp);
+		if(n < 0){
+			
+			snprintf(buffer,256,"loss");
+			sendto(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&cli_addr,length);
+		}
+
+		sendto(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&cli_addr,length);
+		memset(buffer,0,256);
+		memset(temp,0,sizeof(temp));
+	}
 }
 int main(int argc, char* argv[])
 {
@@ -230,6 +292,12 @@ int main(int argc, char* argv[])
 			TCP_send_file(portno,argv[4]);
 		}
 	}
+	else if(strcmp(argv[1],cmd[1]) == 0)
+	{
+		if(strcmp(argv[2],cmd[3]) == 0)
+		{
+			UDP_recv_file(portno);
+		}
+	}
 	return 0;
-
 }

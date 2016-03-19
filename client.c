@@ -116,7 +116,7 @@ int TCP_trans_file(char* ip, int port, char* fname)
 	close(socketfd);
 	return 0;	
 }
-int tcp_recv_file(char* ip,int port)
+int TCP_recv_file(char* ip,int port)
 {
 	int socketfd,portno,n;
 	struct sockaddr_in serv_addr;
@@ -222,6 +222,134 @@ int tcp_recv_file(char* ip,int port)
 	close(socketfd);
 	return 0;
 }
+int UDP_send_file(char* ip, int port,char* fname)
+{
+	int socketfd,n;
+	struct sockaddr_in serv_addr,cli_addr;
+	struct hostent* server;
+	int size;
+	int i = 0 ;
+	int count = 0;
+	int trans_size = 0;
+	int percent = 1;
+	int num =1;
+	char checksum;
+	char ACK = 6;
+	char SYN = 22;
+	char cmd;
+	char buffer[1025];
+	char seq_num[4]; //the sequence number of each packet
+	char f_buf[1020];
+	char temp[300];
+	char return_msg[4];
+	FILE* fin = fopen(fname,"rb");
+	socketfd = socket(AF_INET,SOCK_DGRAM,0);
+	if(socketfd < 0){
+		error("ERROR on open an udp socket\n");
+		return 1;
+	}
+	bzero((char*)&cli_addr,sizeof(cli_addr));
+	cli_addr.sin_family = AF_INET;
+	cli_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+	cli_addr.sin_port = htons(0);
+	
+	if(bind(socketfd,(struct sockaddr*)&cli_addr,sizeof(cli_addr)) < 0){
+		error("ERROR on binding socket\n");
+		return 1;
+	}
+	bzero((char*)&serv_addr,sizeof(serv_addr));
+	serv_addr.sin_family = AF_INET;
+	serv_addr.sin_port = htons(port);
+	
+	server = gethostbyname(ip);
+	if(server == 0)
+	{
+		printf("no such host name\n");
+		return 1;
+	}
+	bcopy(server->h_addr_list[0],(caddr_t)&serv_addr.sin_addr,server->h_length);
+	size = sizeof(serv_addr);
+	
+	n = sendto(socketfd,ACK,sizeof(ACK),0,(struct sockaddr*)&serv_addr,size);
+	if(n == 1)
+		n = recvfrom(socketfd,cmd,sizeof(cmd),0,(struct sockaddr*)&serv_addr,size);
+	if(n == 1)
+		n = sendto(socketfd,ACK,sizeof(ACK),0,(struct sockaddr*)&serv_addr,size);  
+	if(n ==1)
+		n = sendto(socketfd,fname,sizeof(fname),0,(struct sockaddr*)&serv_addr,size);
+	
+	
+	
+	
+	
+	while(feof(fin)!=EOF)
+	{
+		memset(buffer,0,sizeof(buffr));
+		memset(f_buffer,0,sizeof(f_buf));
+		memset(temp,0,sizeof(temp));
+		
+		//read file data
+		fgets(f_buf,1020,fin);
+		
+		//generate the checksum
+		for(i=0;i<1020;i++)
+		{
+			checksum ^= f_buf[i];
+		}
+		//record the progress;
+		count += 1020;
+		
+		//generate the number of each packet
+		snprintf(temp,4,"%d",num);
+		num++;
+		
+		//set up the header
+		strcat(buffer,temp);
+		strcat(buffer,checksum);
+		strcat(buffer,f_buf);
+		
+		//send the packet
+		sendto(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&serv_addr,size);
+		
+		//recieve the return message
+		n = recvfrom(socketfd,return_msg,sizeof(return_msg),0,(struct sockaddr*)&serv_addr,&size);
+		//if n<0, represent that the client loss connection to server
+		if(n<0)
+		{
+			printf("connection failed\n");
+			return 1;
+		}
+		//if return_msg is equal to the count+1, transmision is successful, and then continue
+		if((int)return_msg == count+1)
+		{
+			continue;
+		}
+		//else, resend the data to server until the return_msg is correct
+		else if((int)return_msg != count+1)
+		{
+			sendto(socketfd,ACK,sizeof(ACK),0,(struct sockaddr*)&serv_addr,size);
+		}
+		
+		//print the progress and time
+		if(trans_size >= (percent*file_size/20) && percent*5 <= 100){
+			
+			fflush(fout);
+			time_t t = time(NULL);
+			struct tm cur_time = *localtime(&t);
+			printf("%d%% file has transmitted in %d:%d:%d in %d-%d-%d\n ",percent*5,cur_time.tm_hour,cur_time.tm_min,
+											cur_time.tm_sec,cur_time.tm_year+1900,cur_time.tm_mon+1,cur_time.tm_mday);
+			percent++;
+		}
+		else if(percent*5 > 100){
+			
+			break;
+		}		
+		
+		
+		
+	}
+	
+}
 int main(int argc, char* argv[])
 {
 	char *cmd[4] = {"tcp","udp","send","recv"};
@@ -244,7 +372,7 @@ int main(int argc, char* argv[])
 		else if(strcmp(argv[2],cmd[3]) == 0)
 		{
 			printf("recv file\n");
-			tcp_recv_file(argv[3],portno);
+			TCP_recv_file(argv[3],portno);
 		}
 		else
 		{
@@ -255,7 +383,8 @@ int main(int argc, char* argv[])
 	{
 		if(strcmp(argv[2],cmd[2]) == 0)
 		{
-			
+			printf("client is on the way\n");
+			UDP_send_file(argv[3],portno);
 		}
 		else if(strcmp(argv[2],cmd[3])== 0)
 		{
