@@ -213,6 +213,9 @@ int UDP_recv_file(int port)
 	int  portno,length;
 	struct sockaddr_in serv_addr,cli_addr;
 	int num = 0;
+	char ACK = 6;
+	char SYN = 22;
+	char cmd;
 	int file_size;
 	int percent = 1;
 	int recv_size;
@@ -222,6 +225,7 @@ int UDP_recv_file(int port)
 	char temp[300];
 	char seq_num[4];
 	int i,s_num;
+	FILE* fout;
 
 	socketfd = socket(AF_INET, SOCK_DGRAM, 0);
 	if (n < 0) {
@@ -238,34 +242,59 @@ int UDP_recv_file(int port)
 		error("ERROR on binding\n");
 		return 1;
 	}
-	listen(socketfd,5);
 	length = sizeof(cli_addr);
-	while(1){
-		memset(buffer,0,256);
-		n = recvfrom(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&cli_addr,&length);
-		for(i=0;i<300;i++)
-		{
-			if(i<4)
-			{
-				seq_num[i] = temp[i];
-			}
-			else if(i >= 4)
-			{
-				buffer[i-4] = temp[i];
-				printf("%c   %c\n",buffer[i-4],temp[i]);
-			}
-		}
-		s_num = atoi(seq_num);
-		printf("%d  %s  %s\n",s_num,buffer,temp);
-		if(n < 0){
-			
-			snprintf(buffer,256,"loss");
-			sendto(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&cli_addr,length);
-		}
+	
+	memset(fname,0,sizeof(fname));
+	n = recvfrom(socketfd,fname,sizeof(fname),0,(struct sockaddr*)&cli_addr,&length);
+	printf("File name      : %s\n",fname);
+	if(n < 0)
+	{
+		printf("ERROR on recieving file name\n");
+		return 1;
+	}
+	n = sendto(socketfd,fname,sizeof(fname),0,(struct sockaddr*)&cli_addr,length);
+	if(n<0)
+	{
+		printf("ERROR on writing\n");
+		return 1;
+	}
+	memset(fsize,0,sizeof(fsize));
+	n = recvfrom(socketfd,fsize,sizeof(fsize),0,(struct sockaddr*)&cli_addr,&length);
+	if(n < 0)
+	{
+		printf("ERROR on recieving file size\n");
+		return 1;
+	}
+	n = sendto(socketfd,fname,sizeof(fname),0,(struct sockaddr*)&cli_addr,length);
+    if(n<0)
+    {
+        printf("ERROR on writing\n");
+        return 1;                                                               
+    }
 
-		sendto(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&cli_addr,length);
+	printf("%s\n",fsize);
+
+	
+	fout = fopen(fname,"wb");
+	while(1){
+		n = recvfrom(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&cli_addr,&length);
+		printf("%s\n",temp);
+		if(n < 0){
+			printf("error on recieving\n");
+			return 1;
+		}
+		else if(temp == NULL)
+			break;
+		else if(n ==0)
+			break;
+		else if(strcmp("end",buffer)==0)
+		{
+			break;
+		}
+		fwrite(temp,sizeof(char),sizeof(temp),fout);
+		sendto(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&cli_addr,length);
 		memset(buffer,0,256);
-		memset(temp,0,sizeof(temp));
+		memset(temp,0,300);
 	}
 }
 int main(int argc, char* argv[])

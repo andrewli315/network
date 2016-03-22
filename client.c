@@ -7,6 +7,8 @@
 #include<sys/socket.h>
 #include<sys/stat.h>
 #include<netdb.h>
+#include<arpa/inet.h>
+#include<netinet/in.h>
 #include<time.h>
 int getFileSize(char* fname)
 {
@@ -228,21 +230,23 @@ int UDP_send_file(char* ip, int port,char* fname)
 	struct sockaddr_in serv_addr,cli_addr;
 	struct hostent* server;
 	int size;
+	int file_size;
 	int i = 0 ;
 	int count = 0;
 	int trans_size = 0;
 	int percent = 1;
 	int num =1;
-	char checksum;
+	char *checksum;
 	char ACK = 6;
 	char SYN = 22;
 	char cmd;
-	char buffer[1025];
+	char buffer[300];
 	char seq_num[4]; //the sequence number of each packet
-	char f_buf[1020];
+	char f_buf[256];
 	char temp[300];
-	char return_msg[4];
-	FILE* fin = fopen(fname,"rb");
+	char return_msg[256];
+	char f_size[256];
+	FILE* fin;
 	socketfd = socket(AF_INET,SOCK_DGRAM,0);
 	if(socketfd < 0){
 		error("ERROR on open an udp socket\n");
@@ -270,70 +274,99 @@ int UDP_send_file(char* ip, int port,char* fname)
 	bcopy(server->h_addr_list[0],(caddr_t)&serv_addr.sin_addr,server->h_length);
 	size = sizeof(serv_addr);
 	
-	n = sendto(socketfd,ACK,sizeof(ACK),0,(struct sockaddr*)&serv_addr,size);
-	if(n == 1)
-		n = recvfrom(socketfd,cmd,sizeof(cmd),0,(struct sockaddr*)&serv_addr,size);
-	if(n == 1)
-		n = sendto(socketfd,ACK,sizeof(ACK),0,(struct sockaddr*)&serv_addr,size);  
-	if(n ==1)
-		n = sendto(socketfd,fname,sizeof(fname),0,(struct sockaddr*)&serv_addr,size);
-	
-	
-	
-	
-	
-	while(feof(fin)!=EOF)
+	fin = fopen(fname,"rb");
+	file_size = getFileSize(fname);
+	sprintf(f_size,"%d",file_size);
+	printf("File size     : %d\n",file_size); 
+
+    if (!fin) 
 	{
-		memset(buffer,0,sizeof(buffr));
-		memset(f_buffer,0,sizeof(f_buf));
+        error("open file error!");
+        exit (1);
+    }
+
+	struct timeval tv;
+	fd_set readfd;
+	struct sockaddr addr;
+	socklen_t len;
+	memset(buffer,0,sizeof(buffer));
+	while(1){
+		
+		sendto(socketfd,fname,sizeof(fname),0,(struct sockaddr*)&serv_addr,size);
+
+		FD_ZERO(&readfd);
+		FD_SET(socketfd,&readfd);
+		tv.tv_sec = 0;
+		tv.tv_usec = 2;
+		select(socketfd+1,&readfd,NULL,NULL,&tv);
+		if(FD_ISSET(socketfd,&readfd))
+		{
+			if((n = recvfrom(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&addr,&len))>=0)
+				break;
+		}
+		else
+			printf("timeout\n");
+
+	}
+	memset(buffer,0,sizeof(buffer));
+	while(1){
+		sendto(socketfd,f_size,sizeof(f_size),0,(struct sockaddr*)&serv_addr,size);
+		FD_ZERO(&readfd);
+		FD_SET(socketfd,&readfd);
+		tv.tv_sec = 0;
+		tv.tv_usec = 2;
+		select(socketfd+1,&readfd,NULL,NULL,&tv);
+		if(FD_ISSET(socketfd,&readfd))
+		{
+			if((n = recvfrom(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&addr,&len)) >= 0)
+				printf("%s\n",buffer);
+				break;
+		}		
+		else
+			printf("timeout\n");
+	}
+
+    	
+	while(feof(fin)!= EOF)
+	{
+		memset(buffer,0,sizeof(buffer));
+		memset(f_buf,0,sizeof(f_buf));
 		memset(temp,0,sizeof(temp));
-		
-		//read file data
-		fgets(f_buf,1020,fin);
-		
-		//generate the checksum
-		for(i=0;i<1020;i++)
+		while(1)
 		{
-			checksum ^= f_buf[i];
+			fread(f_buf,sizeof(char),255,fin);
+			count += 255;
+
+			sprintf(temp,"%d",num);
+			num++;
+			strcat(temp,f_buf);
+			//strcat(buffer,temp);
+
+			sendto(socketfd,f_buf,sizeof(f_buf),0,(struct sockaddr*)&serv_addr,size);
+		
+			FD_ZERO(&readfd);
+			FD_SET(socketfd,&readfd);
+			tv.tv_sec = 0;
+			tv.tv_usec = 5;
+			select(socketfd+1,&readfd,NULL,NULL,&tv);
+
+			if(FD_ISSET(socketfd,&readfd))
+			{
+
+				//recieve signal
+				if((n = recvfrom(socketfd,buffer,sizeof(buffer),0,&addr,&len)) >= 0)
+				{
+					printf("%s\n",buffer);
+					break;
+				}
+			}
+			else 
+				printf("timout\n");
 		}
-		//record the progress;
-		count += 1020;
-		
-		//generate the number of each packet
-		snprintf(temp,4,"%d",num);
-		num++;
-		
-		//set up the header
-		strcat(buffer,temp);
-		strcat(buffer,checksum);
-		strcat(buffer,f_buf);
-		
-		//send the packet
-		sendto(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&serv_addr,size);
-		
-		//recieve the return message
-		n = recvfrom(socketfd,return_msg,sizeof(return_msg),0,(struct sockaddr*)&serv_addr,&size);
-		//if n<0, represent that the client loss connection to server
-		if(n<0)
-		{
-			printf("connection failed\n");
-			return 1;
-		}
-		//if return_msg is equal to the count+1, transmision is successful, and then continue
-		if((int)return_msg == count+1)
-		{
-			continue;
-		}
-		//else, resend the data to server until the return_msg is correct
-		else if((int)return_msg != count+1)
-		{
-			sendto(socketfd,ACK,sizeof(ACK),0,(struct sockaddr*)&serv_addr,size);
-		}
-		
+		trans_size += 255;
+		sleep(0.2);
 		//print the progress and time
 		if(trans_size >= (percent*file_size/20) && percent*5 <= 100){
-			
-			fflush(fout);
 			time_t t = time(NULL);
 			struct tm cur_time = *localtime(&t);
 			printf("%d%% file has transmitted in %d:%d:%d in %d-%d-%d\n ",percent*5,cur_time.tm_hour,cur_time.tm_min,
@@ -344,11 +377,11 @@ int UDP_send_file(char* ip, int port,char* fname)
 			
 			break;
 		}		
-		
-		
-		
 	}
-	
+	sendto(socketfd,"end",3,0,(struct sockaddr*)&serv_addr,size);
+	fclose(fin);
+	close(socketfd);
+	return 0;
 }
 int main(int argc, char* argv[])
 {
@@ -361,17 +394,19 @@ int main(int argc, char* argv[])
 	}
 	
 	portno = atoi(argv[4]);
-	//printf("%s\n%s\n%s\n%s\n",argv[1],argv[2],argv[3],argv[5]);
+	printf("Protocol      : %s\n",argv[1]);
+	printf("Send/recieve  : %s\n",argv[2]);
+	printf("IP Adress     : %s\n",argv[3]);
+	printf("Port          : %s\n",argv[4]);
+	printf("File name     : %s\n",argv[5]);
 	if(strcmp(argv[1],cmd[0]) == 0)
 	{
 		if(strcmp(argv[2],cmd[2]) == 0)
 		{
-			printf("client is on its way\n");
 			TCP_trans_file(argv[3],portno,argv[5]);
 		}
 		else if(strcmp(argv[2],cmd[3]) == 0)
 		{
-			printf("recv file\n");
 			TCP_recv_file(argv[3],portno);
 		}
 		else
@@ -383,12 +418,7 @@ int main(int argc, char* argv[])
 	{
 		if(strcmp(argv[2],cmd[2]) == 0)
 		{
-			printf("client is on the way\n");
-			UDP_send_file(argv[3],portno);
-		}
-		else if(strcmp(argv[2],cmd[3])== 0)
-		{
-			
+			UDP_send_file(argv[3],portno,argv[5]);
 		}
 		else
 		{
