@@ -232,6 +232,7 @@ int UDP_send_file(char* ip, int port,char* fname)
 	int size;
 	int file_size;
 	int i = 0 ;
+	int timeout =0;
 	int count = 0;
 	int trans_size = 0;
 	int percent = 1;
@@ -297,7 +298,7 @@ int UDP_send_file(char* ip, int port,char* fname)
 		FD_ZERO(&readfd);
 		FD_SET(socketfd,&readfd);
 		tv.tv_sec = 0;
-		tv.tv_usec = 2;
+		tv.tv_usec = 8;
 		select(socketfd+1,&readfd,NULL,NULL,&tv);
 		if(FD_ISSET(socketfd,&readfd))
 		{
@@ -314,7 +315,7 @@ int UDP_send_file(char* ip, int port,char* fname)
 		FD_ZERO(&readfd);
 		FD_SET(socketfd,&readfd);
 		tv.tv_sec = 0;
-		tv.tv_usec = 2;
+		tv.tv_usec = 8;
 		select(socketfd+1,&readfd,NULL,NULL,&tv);
 		if(FD_ISSET(socketfd,&readfd))
 		{
@@ -342,7 +343,7 @@ int UDP_send_file(char* ip, int port,char* fname)
 			strcat(temp,f_buf);
 			//strcat(buffer,temp);
 
-			sendto(socketfd,f_buf,sizeof(f_buf),0,(struct sockaddr*)&serv_addr,size);
+			sendto(socketfd,f_buf,strlen(f_buf),0,(struct sockaddr*)&serv_addr,size);
 		
 			FD_ZERO(&readfd);
 			FD_SET(socketfd,&readfd);
@@ -361,7 +362,12 @@ int UDP_send_file(char* ip, int port,char* fname)
 				}
 			}
 			else 
+			{
+				timeout++;
 				printf("timout\n");
+			}
+			if(timeout == 20)
+				break;
 		}
 		trans_size += 255;
 		sleep(0.2);

@@ -276,26 +276,32 @@ int UDP_recv_file(int port)
 
 	
 	fout = fopen(fname,"wb");
+
 	while(1){
-		n = recvfrom(socketfd,temp,sizeof(temp),0,(struct sockaddr*)&cli_addr,&length);
-		printf("%s\n",temp);
+		n = recvfrom(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&cli_addr,&length);
+		printf("%s\n",buffer);
 		if(n < 0){
 			printf("error on recieving\n");
 			return 1;
 		}
-		else if(temp == NULL)
+		else if(buffer == NULL)
 			break;
 		else if(n ==0)
-			break;
-		else if(strcmp("end",buffer)==0)
 		{
-			break;
+			sendto(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&cli_addr,length);
 		}
-		fwrite(temp,sizeof(char),sizeof(temp),fout);
+		else if(strcmp(buffer,"end")==0)
+			break;
+
+		fwrite(buffer,sizeof(char),n,fout);
 		sendto(socketfd,buffer,sizeof(buffer),0,(struct sockaddr*)&cli_addr,length);
 		memset(buffer,0,256);
 		memset(temp,0,300);
 	}
+	fflush(fout);
+	fclose(fout);
+	close(socketfd);
+	return 0;
 }
 int main(int argc, char* argv[])
 {
